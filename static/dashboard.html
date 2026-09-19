@@ -2,78 +2,74 @@
 <html>
 <head>
   <meta charset="utf-8" />
-  <title>VoicePrint Consent — Live Screening</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>ACSA — Live Screening</title>
   <style>
-    body { font-family: -apple-system, sans-serif; background: #0f1115; color: #eee; padding: 40px; }
-    h1 { font-weight: 600; }
-    .meter-row { margin: 20px 0; }
-    .meter-label { font-size: 14px; color: #aaa; margin-bottom: 6px; }
-    .meter-bar { background: #222; border-radius: 8px; height: 24px; overflow: hidden; }
-    .meter-fill { height: 100%; transition: width 0.4s ease, background 0.4s ease; }
-    .verdict { font-size: 32px; font-weight: 700; margin: 30px 0 10px; }
-    .explanation { color: #bbb; }
-    .transcript { margin-top: 20px; padding: 16px; background: #1a1c22; border-radius: 8px; font-style: italic; }
+    :root { --green: #3fb950; --yellow: #f5a623; --red: #e5484d; }
+    body { font-family: -apple-system, sans-serif; background: #0f1115; color: #eee; padding: 40px; max-width: 720px; margin: 0 auto; }
+    h1 { font-weight: 600; margin-bottom: 4px; }
+    .sub { color: #888; margin-bottom: 28px; }
+    .caller { font-size: 22px; margin-bottom: 4px; }
+    .status { color: #aaa; margin-bottom: 20px; min-height: 1.4em; }
+    .gauge { position: relative; height: 22px; border-radius: 11px; margin: 26px 0 8px;
+             background: linear-gradient(90deg, var(--green), var(--yellow), var(--red)); }
+    .marker { position: absolute; top: -6px; width: 6px; height: 34px; border-radius: 3px; background: #fff;
+              left: 0%; transition: left 0.9s cubic-bezier(.3,1.2,.4,1); opacity: 0; transform: translateX(-50%); }
+    .ticks { display: flex; justify-content: space-between; font-size: 12px; color: #888; }
+    .verdict { font-size: 30px; font-weight: 700; margin: 26px 0 8px; }
+    .explanation { color: #bbb; line-height: 1.5; }
+    .box { margin-top: 20px; padding: 16px; background: #1a1c22; border-radius: 8px; }
+    .box h3 { margin: 0 0 8px; font-size: 12px; text-transform: uppercase; letter-spacing: .08em; color: #888; font-weight: 600; }
+    .transcript { font-style: italic; }
+    pre { margin: 0; font-size: 12px; color: #9aa; white-space: pre-wrap; }
   </style>
 </head>
 <body>
-  <h1>VoicePrint Consent</h1>
-  <div id="status">Waiting for a call...</div>
+  <h1>ACSA</h1>
+  <div class="sub">Automated Call Shield Assistant — web fallback dashboard</div>
 
-  <div class="meter-row">
-    <div class="meter-label">Speaker Match</div>
-    <div class="meter-bar"><div id="bar-speaker" class="meter-fill" style="width:0%"></div></div>
-  </div>
-  <div class="meter-row">
-    <div class="meter-label">Audio Authenticity Risk</div>
-    <div class="meter-bar"><div id="bar-artifact" class="meter-fill" style="width:0%"></div></div>
-  </div>
-  <div class="meter-row">
-    <div class="meter-label">Linguistic Risk</div>
-    <div class="meter-bar"><div id="bar-linguistic" class="meter-fill" style="width:0%"></div></div>
-  </div>
-  <div class="meter-row">
-    <div class="meter-label">Composite Risk</div>
-    <div class="meter-bar"><div id="bar-composite" class="meter-fill" style="width:0%"></div></div>
-  </div>
+  <div id="caller" class="caller"></div>
+  <div id="status" class="status">Waiting for a call...</div>
+
+  <div class="gauge"><div id="marker" class="marker"></div></div>
+  <div class="ticks"><span>LIKELY_HUMAN</span><span>HUMAN_LIKELY_SCAM</span><span>AI_SCAM</span></div>
 
   <div id="verdict" class="verdict"></div>
   <div id="explanation" class="explanation"></div>
-  <div id="transcript" class="transcript"></div>
+  <div id="greetingBox" class="box" style="display:none"><h3>ACSA said</h3><div id="greeting"></div></div>
+  <div id="transcriptBox" class="box" style="display:none"><h3>Caller said</h3><div id="transcript" class="transcript"></div></div>
+  <div id="layersBox" class="box" style="display:none"><h3>Layers (decided by <span id="decidedBy"></span>)</h3><pre id="layers"></pre></div>
 
   <script>
-    function colorFor(pct) {
-      if (pct > 65) return "#e5484d";
-      if (pct > 35) return "#f5a623";
-      return "#3fb950";
-    }
-    function setBar(id, value) {
-      const pct = Math.round((value ?? 0) * 100);
-      const el = document.getElementById(id);
-      el.style.width = pct + "%";
-      el.style.background = colorFor(pct);
-    }
+    const POS = { LIKELY_HUMAN: 10, HUMAN_LIKELY_SCAM: 50, AI_SCAM: 90 };
+    const COLOR = { LIKELY_HUMAN: "var(--green)", HUMAN_LIKELY_SCAM: "var(--yellow)", AI_SCAM: "var(--red)" };
+    const STATUS = {
+      waiting: "Waiting for a call...", ringing: "Incoming call — waiting for the app to answer...",
+      answered: "ACSA answered — listening...", processing: "Analyzing call...",
+      declined: "Call declined.", error: "Something went wrong analyzing this call.",
+    };
+    const $ = (id) => document.getElementById(id);
+    const show = (id, on) => ($(id).style.display = on ? "block" : "none");
 
     async function poll() {
-      const res = await fetch("/results/latest");
-      const data = await res.json();
-
-      if (data.status === "waiting") {
-        document.getElementById("status").innerText = "Waiting for a call...";
-      } else if (data.status === "processing") {
-        document.getElementById("status").innerText = "Analyzing call...";
-      } else if (data.status === "done") {
-        document.getElementById("status").innerText = "";
-        setBar("bar-speaker", data.speaker_match_score ?? 0);
-        setBar("bar-artifact", data.artifact_risk_score);
-        setBar("bar-linguistic", data.linguistic_risk_score);
-        setBar("bar-composite", data.composite_risk);
-        document.getElementById("verdict").innerText = data.verdict;
-        document.getElementById("verdict").style.color = colorFor(data.composite_risk * 100);
-        document.getElementById("explanation").innerText = data.explanation;
-        document.getElementById("transcript").innerText = '"' + data.transcript + '"';
-      }
+      let d;
+      try { d = await (await fetch("/results/latest")).json(); } catch { return; }
+      $("caller").innerText = d.caller_display || "";
+      $("status").innerText = d.status === "done" ? "" : (STATUS[d.status] || d.status);
+      $("greeting").innerText = d.greeting_text || "";
+      show("greetingBox", !!d.greeting_text);
+      const done = d.status === "done";
+      $("transcript").innerText = done && d.transcript ? '"' + d.transcript + '"' : "";
+      show("transcriptBox", done && !!d.transcript);
+      $("marker").style.opacity = done ? 1 : 0;
+      $("marker").style.left = done ? POS[d.verdict] + "%" : "0%";
+      $("verdict").innerText = done ? d.verdict : "";
+      $("verdict").style.color = done ? COLOR[d.verdict] : "";
+      $("explanation").innerText = done ? d.explanation : (d.status === "error" ? (d.explanation || "") : "");
+      $("decidedBy").innerText = d.decided_by || "";
+      $("layers").innerText = done ? JSON.stringify(d.layers, null, 2) : "";
+      show("layersBox", done);
     }
-
     setInterval(poll, 1500);
     poll();
   </script>

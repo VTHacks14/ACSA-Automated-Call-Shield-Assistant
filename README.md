@@ -1,67 +1,61 @@
-# VoicePrint Consent — Starter Scaffold
+# ACSA — Automated Call Shield Assistant (backend)
+
+FastAPI + Twilio backend for VTHacks 14. A caller is greeted by ACSA, states their name and
+reason for calling, and the recording runs a waterfall. Only Layers 1-4 can produce **AI_SCAM**;
+only Gemini produces **LIKELY_HUMAN** / **HUMAN_LIKELY_SCAM**. See `ACSA(V1).md` for the design.
+
+```
+Layer 1  scam number gate (Atlas / FTC DNC)   match            -> AI_SCAM
+Whisper  transcript (feeds Layer 2 + Gemini + the UI)
+Layer 2  voiceprint (Resemblyzer)             confident mismatch -> AI_SCAM   (a match does not exit)
+Layer 3  Sightengine AI-voice detector        confident AI     -> AI_SCAM
+Layer 4  local detector (OFF by default)      confident AI     -> AI_SCAM
+Gemini   content judgment                     -> LIKELY_HUMAN | HUMAN_LIKELY_SCAM
+```
 
 ## Setup
 
 ```bash
-python -m venv venv
-source venv/bin/activate      # Windows: venv\Scripts\activate
-pip install -r requirements.txt
+brew install ffmpeg libsndfile          # system deps for Whisper / librosa
+python -m venv venv && source venv/bin/activate
+pip install -r requirements.txt         # keeps setuptools<82 on purpose (pkg_resources)
+cp .env.example .env                    # then fill in real values; .env is gitignored
 ```
 
-You'll also need:
-- A free Twilio account (twilio.com/try-twilio) — buy a phone number (~$1)
-- `ngrok` installed (ngrok.com/download)
-- Your Twilio Account SID and Auth Token as environment variables:
+## Run
 
 ```bash
-export TWILIO_ACCOUNT_SID=xxxx
-export TWILIO_AUTH_TOKEN=xxxx
+uvicorn main:app --port 8000            # terminal 1
+ngrok http 8000                         # terminal 2 -> copy the https URL into PUBLIC_BASE_URL in .env, restart uvicorn
 ```
+Twilio console -> Number 1 -> "A call comes in" -> `https://<ngrok>/voice/incoming` (HTTP POST).
+The URL changes every ngrok restart; re-paste it into both Twilio and `.env`.
 
-## Run it
+Web fallback dashboard: `http://localhost:8000`. Tests: `python -m pytest tests`.
 
-**1. Start the server:**
-```bash
-uvicorn main:app --reload --port 8000
-```
+## Call flow / API
 
-**2. In another terminal, start the tunnel:**
-```bash
-ngrok http 8000
-```
-Copy the `https://xxxx.ngrok.io` URL it gives you.
+| Route | Who calls it | What it does |
+|---|---|---|
+| `POST /voice/incoming` | Twilio | new call -> status `ringing`, caller held on a `<Pause>`/`<Redirect>` loop |
+| `POST /call/decision` `{"answer": true}` | iOS app | Yes -> ACSA answers (ElevenLabs greeting, `<Record>`); No -> forward/decline. No answer within `ACSA_ANSWER_TIMEOUT_SECONDS` = auto-answer |
+| `POST /voice/recording` | Twilio | download recording, run the waterfall in the background (status `processing`) |
+| `GET /results/latest` | app / dashboard | latest call: `status`, `caller_display`, `greeting_text`, `transcript`, `verdict`, `explanation`, `decided_by`, `layers` |
+| `POST /enroll` (`name`, `audio`, optional `phone`) | you | register a reference voice |
+| `POST /demo/analyze` (`audio`, optional `from_number`) | you | **fallback**: run the waterfall on a saved recording |
 
-**3. Configure your Twilio number:**
-Go to the Twilio console → Phone Numbers → your number → "A call comes in" → set to:
-`https://xxxx.ngrok.io/voice/incoming` (HTTP POST)
+Statuses: `waiting` `ringing` `answered` `processing` `done` `declined` `error`.
 
-**4. Enroll a reference voice** (do this before testing — the speaker
-verification layer needs something to compare against):
-```bash
-curl -F "name=Sarah" -F "audio=@sarah_sample.wav" http://localhost:8000/enroll
-```
+## Scripts
 
-**5. Open the dashboard:**
-Visit `http://localhost:8000` in your browser.
+- `scripts/load_ftc_dnc.py <csv...>` — bulk-load FTC Do Not Call data into Atlas.
+- `scripts/run_pipeline_on_file.py <wav> [--from +1...]` — waterfall on a saved file; prints every layer's raw output.
+- `scripts/inject_red_demo_clip.py` — Number 2 calls Number 1 and plays `static/demo/red_clip.mp3` (red case).
 
-**6. Call your Twilio number** from any phone. Say something like:
-*"Hi, this is Sarah, I need help with something urgent."*
-Watch the dashboard update after you hang up.
+## Known limitations (be upfront if asked)
 
-## Notes / known rough edges to fix during the hackathon
-
-- `artifact_detection.py` is a crude heuristic, not a trained classifier —
-  swap in a real pretrained deepfake-audio model from Hugging Face
-  (search "ASVspoof") if you have time. Right now it's there so the full
-  pipeline runs end to end from hour one.
-- `extract_stated_name()` in `main.py` is naive string matching. Once the
-  rest of the pipeline works, consider replacing it with a small LLM call
-  that extracts the name more robustly from the transcript.
-- `ngrok`'s free tier gives you a new URL every restart — remember to
-  update the Twilio webhook if you restart the tunnel.
-- For the actual stage demo, deploy this to a free host (Render, Fly.io,
-  Railway) instead of relying on your laptop + ngrok staying connected on
-  hackathon Wi-Fi. Keep ngrok as your local dev/testing loop.
-- Have a pre-recorded fallback clip ready in case live telephony fails
-  during judging — run it through `run_pipeline()` directly as a backup
-  demo path.
+- The scam-number gate uses consumer-*reported* numbers, not confirmed fraud.
+- A voiceprint *match* is weak evidence (a clone can pass); only a *mismatch* is strong.
+- Enroll voices from a sample recorded through the phone line; thresholds are calibrated on 8 kHz audio (see `speaker_verification.py`).
+- Layer 4 is off by default: the open-source model false-flagged a live human on phone audio. ElevenLabs has no detection API.
+- The iOS app polls (no push) — it must be open and in the foreground.

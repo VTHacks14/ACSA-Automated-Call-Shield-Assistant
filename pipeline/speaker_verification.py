@@ -9,11 +9,16 @@ Asymmetric on purpose:
   * a MATCH is weak evidence (a good clone can pass a voiceprint check) ->
     it only means "not disqualified yet"; the waterfall keeps going
 
-Thresholds are on RAW cosine similarity (roughly: same speaker ~0.75-0.9,
-different speaker ~0.4-0.65 on clean audio). 8 kHz phone audio shifts both
-distributions down, so calibrate SPEAKER_MISMATCH_BELOW against a real Twilio
-recording of an enrolled voice before the demo. The band between the two
-thresholds is "inconclusive" and never exits.
+Thresholds are on RAW cosine similarity. Measured on this project's saved 8 kHz
+Twilio recordings: same speaker (two halves of one call) 0.87-0.93; different
+speakers 0.73-0.76. Defaults sit in that gap (mismatch < 0.80, match >= 0.85);
+the band between them is "inconclusive" and never exits.
+
+Enroll from a sample recorded THROUGH THE PHONE LINE (e.g. reuse a saved
+data/call_*.wav via /enroll), not a studio mic. Cross-channel same-speaker scores
+run lower than the same-channel numbers above and could land under the mismatch
+line — a false AI_SCAM on a real contact. Re-check with your own enrolled voice
+before the demo and adjust SPEAKER_MISMATCH_BELOW if needed.
 """
 
 import json
@@ -37,11 +42,11 @@ def _get_encoder():
 
 
 def _mismatch_below() -> float:
-    return float(os.getenv("SPEAKER_MISMATCH_BELOW", "0.60"))
+    return float(os.getenv("SPEAKER_MISMATCH_BELOW", "0.80"))
 
 
 def _match_at_or_above() -> float:
-    return float(os.getenv("SPEAKER_MATCH_ABOVE", "0.75"))
+    return float(os.getenv("SPEAKER_MATCH_ABOVE", "0.85"))
 
 
 def _load_store() -> dict:

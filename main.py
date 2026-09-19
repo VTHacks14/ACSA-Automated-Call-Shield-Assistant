@@ -1,153 +1,338 @@
 """
-VoicePrint Consent — main app.
+ACSA — Automated Call Shield Assistant. FastAPI backend.
 
-Flow:
-  1. Someone calls your Twilio number.
-  2. Twilio POSTs to /voice/incoming -> we respond with TwiML that plays a
-     greeting and records their response.
-  3. Twilio POSTs to /voice/recording once the recording is done -> we
-     download the audio, run the full pipeline, and store the result.
-  4. The dashboard (static/dashboard.html) polls /results/latest to show it.
+Model A: telephony stays entirely server-side on Twilio. The iOS app (and the web
+dashboard) only poll /results/latest and POST the Yes/No answer decision.
+
+Call lifecycle (status field):
+  ringing    /voice/incoming — caller is held on a short <Pause>/<Redirect> loop while
+             the app shows "Would you like ACSA to answer for you?"
+  answered   user tapped Yes (or the hold timed out) — ElevenLabs greeting plays, then <Record>
+  processing /voice/recording — recording downloaded, waterfall running in the background
+             (Twilio's webhook timeout is ~15 s; the pipeline is slower, so never run it inline)
+  done       verdict ready; caller hears a goodbye and is hung up on
+  declined   user tapped No — call is forwarded or politely declined
+  error      recording/pipeline failed
 
 Run:
-  uvicorn main:app --reload --port 8000
-Then point ngrok at port 8000 and set that URL + "/voice/incoming" as your
-Twilio number's "A call comes in" webhook (HTTP POST).
+  uvicorn main:app --port 8000
+Then `ngrok http 8000`, set PUBLIC_BASE_URL in .env, and point Twilio Number 1's
+"A call comes in" webhook at <ngrok-url>/voice/incoming (HTTP POST).
 """
 
+import logging
 import os
+import threading
 import time
+from contextlib import asynccontextmanager
+
 import requests
-from fastapi import FastAPI, Request, UploadFile, Form
-from fastapi.responses import Response, JSONResponse, FileResponse
+from dotenv import load_dotenv
+from fastapi import BackgroundTasks, FastAPI, Form, HTTPException, Request, UploadFile
+from fastapi.responses import FileResponse, JSONResponse, Response
+from fastapi.staticfiles import StaticFiles
+from pydantic import BaseModel
 from twilio.twiml.voice_response import VoiceResponse
 
-from pipeline.transcribe import transcribe_audio
-from pipeline.speaker_verification import enroll_voice, compare_to_enrolled
-from pipeline.artifact_detection import artifact_risk_score
-from pipeline.linguistic_risk import linguistic_risk_score
-from pipeline.fusion import fuse_signals
+load_dotenv()
 
-app = FastAPI()
+from pipeline import greeting as greeting_mod  # noqa: E402  (after load_dotenv so env is set)
+from pipeline.contacts import lookup_contact_name, register_contact_number  # noqa: E402
+from pipeline.speaker_verification import enroll_voice  # noqa: E402
+from pipeline.waterfall import run_waterfall  # noqa: E402
 
-DATA_DIR = os.path.join(os.path.dirname(__file__), "data")
+log = logging.getLogger("acsa")
+logging.basicConfig(level=logging.INFO)
+
+BASE_DIR = os.path.dirname(__file__)
+DATA_DIR = os.path.join(BASE_DIR, "data")
+STATIC_DIR = os.path.join(BASE_DIR, "static")
 os.makedirs(DATA_DIR, exist_ok=True)
+os.makedirs(STATIC_DIR, exist_ok=True)
 
-# In-memory store of the latest call result. Fine for a hackathon demo;
-# swap for a real DB if you have time left over.
-latest_result = {"status": "waiting", "message": "No calls analyzed yet."}
+ANSWER_TIMEOUT = float(os.getenv("ACSA_ANSWER_TIMEOUT_SECONDS", "20"))
+PROCESSING_TIMEOUT = 60.0  # stop holding the caller if the pipeline hasn't finished by then
 
+_calls: dict[str, dict] = {}
+_latest_sid: str | None = None
+_lock = threading.Lock()
+_greeting_file: str | None = None
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    global _greeting_file
+    # Warm the slow stuff now so the first real call isn't the one that pays for it.
+    from pipeline import local_detector, transcribe
+
+    threading.Thread(target=lambda: (transcribe.warm_up(), local_detector.warm_up()), daemon=True).start()
+    _greeting_file = greeting_mod.ensure_greeting_audio()
+    yield
+
+
+app = FastAPI(lifespan=lifespan)
+app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
+
+
+# ── call state ───────────────────────────────────────────────────────────────
+
+def _new_call(sid: str, from_number: str | None, status: str = "ringing") -> dict:
+    global _latest_sid
+    name = lookup_contact_name(from_number)
+    call = {
+        "call_sid": sid,
+        "status": status,
+        "from_number": from_number,
+        "caller_name": name,
+        "caller_display": name or from_number or "Unknown caller",
+        "decision": "pending",
+        "greeting_text": None,
+        "ringing_at": time.time(),
+        "updated_at": time.time(),
+    }
+    with _lock:
+        _calls[sid] = call
+        _latest_sid = sid
+    return call
+
+
+def _update(sid: str, **fields) -> None:
+    with _lock:
+        if sid in _calls:
+            _calls[sid].update(fields, updated_at=time.time())
+
+
+def _get(sid: str) -> dict | None:
+    with _lock:
+        call = _calls.get(sid)
+        return dict(call) if call else None
+
+
+def _apply_result(sid: str, result: dict) -> None:
+    """Fold a finished waterfall result into the call, upgrading the display name if one was stated."""
+    call = _get(sid) or {}
+    display = call.get("caller_name") or result.get("stated_name") or call.get("from_number") or "Unknown caller"
+    _update(
+        sid, status="done", caller_display=display, transcript=result["transcript"],
+        stated_name=result["stated_name"], verdict=result["verdict"], decided_by=result["decided_by"],
+        explanation=result["explanation"], red_flags=result["red_flags"], layers=result["layers"],
+        timestamp=result["timestamp"],
+    )
+
+
+def _xml(vr: VoiceResponse) -> Response:
+    return Response(content=str(vr), media_type="application/xml")
+
+
+def _public_base(request: Request) -> str:
+    configured = os.getenv("PUBLIC_BASE_URL", "").rstrip("/")
+    if configured:
+        return configured
+    base = str(request.base_url).rstrip("/")
+    # ngrok terminates TLS, so the app sees http; Twilio needs https for <Play>.
+    return base.replace("http://", "https://") if "localhost" not in base and "127.0.0.1" not in base else base
+
+
+# ── Twilio webhooks ──────────────────────────────────────────────────────────
 
 @app.post("/voice/incoming")
-async def voice_incoming():
-    """Twilio hits this the moment someone calls the number."""
+async def voice_incoming(request: Request):
+    form = await request.form()
+    sid = form.get("CallSid", f"local-{int(time.time())}")
+    _new_call(sid, form.get("From"))
+    return _hold_response(sid)
+
+
+@app.post("/voice/hold")
+async def voice_hold(request: Request):
+    form = await request.form()
+    return _hold_response(form.get("CallSid", ""), _public_base(request))
+
+
+def _hold_response(sid: str, base: str | None = None) -> Response:
+    call = _get(sid)
+    if call is None:
+        return _hangup("Sorry, something went wrong.")
+    decision = call["decision"]
+    if decision == "pending" and time.time() - call["ringing_at"] > ANSWER_TIMEOUT:
+        # Nobody tapped in time. Auto-answering keeps a judge from sitting on dead air.
+        _update(sid, decision="yes")
+        decision = "yes"
+    if decision == "no":
+        return _decline_response(sid)
+    if decision == "yes":
+        return _answer_response(sid, base)
     vr = VoiceResponse()
-    vr.say(
-        "Hi. This is an automated verification line. "
-        "Please say your name, and the reason for your call, after the tone."
-    )
-    vr.record(
-        max_length=20,
-        action="/voice/recording",   # Twilio POSTs here when recording finishes
-        play_beep=True,
-        trim="trim-silence",
-    )
-    return Response(content=str(vr), media_type="application/xml")
+    vr.pause(length=1)
+    vr.redirect("/voice/hold", method="POST")
+    return _xml(vr)
+
+
+def _answer_response(sid: str, base: str | None) -> Response:
+    _update(sid, status="answered", greeting_text=greeting_mod.GREETING_TEXT)
+    vr = VoiceResponse()
+    if _greeting_file and base:
+        vr.play(f"{base}/static/{_greeting_file}")
+    else:
+        vr.say(greeting_mod.GREETING_TEXT)
+    vr.record(max_length=20, timeout=4, action="/voice/recording", play_beep=True, trim="trim-silence")
+    return _xml(vr)
+
+
+def _decline_response(sid: str) -> Response:
+    _update(sid, status="declined")
+    forward_to = os.getenv("ACSA_FORWARD_TO_NUMBER")
+    vr = VoiceResponse()
+    if forward_to:
+        vr.dial(forward_to)
+    else:
+        vr.say("The person you're calling isn't available right now. Goodbye.")
+        vr.hangup()
+    return _xml(vr)
+
+
+def _hangup(message: str) -> Response:
+    vr = VoiceResponse()
+    vr.say(message)
+    vr.hangup()
+    return _xml(vr)
 
 
 @app.post("/voice/recording")
-async def voice_recording(request: Request):
-    """Twilio hits this once the caller's response has been recorded."""
+async def voice_recording(request: Request, background: BackgroundTasks):
     form = await request.form()
-    recording_url = form.get("RecordingUrl")  # base URL, needs a format suffix
-    call_sid = form.get("CallSid", "unknown")
+    sid = form.get("CallSid", "unknown")
+    recording_url = form.get("RecordingUrl")
+    if _get(sid) is None:
+        _new_call(sid, form.get("From"))
+    if not recording_url or form.get("RecordingDuration") == "0":
+        _update(sid, status="error", explanation="No speech was recorded.")
+        return _hangup("I didn't catch anything. Goodbye.")
+    _update(sid, status="processing", processing_started=time.time())
+    background.add_task(_process_recording, sid, recording_url)
+    return _processing_response(sid)
 
-    global latest_result
-    latest_result = {"status": "processing", "call_sid": call_sid}
 
-    audio_path = _download_recording(recording_url, call_sid)
-    result = run_pipeline(audio_path)
-    result["call_sid"] = call_sid
-    latest_result = result
+def _process_recording(sid: str, recording_url: str) -> None:
+    call = _get(sid) or {}
+    try:
+        path = _download_recording(recording_url, sid)
+        _apply_result(sid, run_waterfall(path, call.get("from_number")))
+    except Exception as exc:
+        log.exception("pipeline failed for %s", sid)
+        _update(sid, status="error", explanation=f"Analysis failed: {type(exc).__name__}")
 
-    # Let the caller know screening is done, then hang up.
+
+@app.post("/voice/processing")
+async def voice_processing(request: Request):
+    form = await request.form()
+    return _processing_response(form.get("CallSid", ""))
+
+
+def _processing_response(sid: str) -> Response:
+    call = _get(sid) or {}
+    if call.get("status") in ("done", "error"):
+        return _hangup("Thank you. Your call has been screened.")
+    if time.time() - call.get("processing_started", time.time()) > PROCESSING_TIMEOUT:
+        return _hangup("Thank you. Goodbye.")
     vr = VoiceResponse()
-    vr.say("Thank you. Your call has been screened.")
-    vr.hangup()
-    return Response(content=str(vr), media_type="application/xml")
+    vr.pause(length=1)
+    vr.redirect("/voice/processing", method="POST")
+    return _xml(vr)
 
 
-def _download_recording(recording_url: str, call_sid: str) -> str:
-    """Twilio recordings need '.wav' appended and require your auth."""
-    account_sid = os.environ["TWILIO_ACCOUNT_SID"]
-    auth_token = os.environ["TWILIO_AUTH_TOKEN"]
-    wav_url = f"{recording_url}.wav"
-    resp = requests.get(wav_url, auth=(account_sid, auth_token))
-    path = os.path.join(DATA_DIR, f"call_{call_sid}.wav")
+def _download_recording(recording_url: str, sid: str) -> str:
+    """Twilio recordings need '.wav' appended and your auth; the file can lag the webhook by a moment."""
+    auth = (os.environ["TWILIO_ACCOUNT_SID"], os.environ["TWILIO_AUTH_TOKEN"])
+    for attempt in range(4):
+        resp = requests.get(f"{recording_url}.wav", auth=auth, timeout=20)
+        if resp.status_code == 200:
+            break
+        time.sleep(1 + attempt)
+    else:
+        raise RuntimeError(f"recording download failed ({resp.status_code})")
+    path = os.path.join(DATA_DIR, f"call_{sid}.wav")
     with open(path, "wb") as f:
         f.write(resp.content)
     return path
 
 
-def run_pipeline(audio_path: str) -> dict:
-    """The actual multi-signal analysis. This is the core of the product."""
-    transcript = transcribe_audio(audio_path)
-    stated_name = extract_stated_name(transcript)  # naive first pass, see transcribe.py
+# ── app-facing API ───────────────────────────────────────────────────────────
 
-    speaker_score = compare_to_enrolled(audio_path, stated_name)   # 0 = no match, 1 = perfect match, None = no enrollment on file
-    artifact_score = artifact_risk_score(audio_path)               # 0 = sounds natural, 1 = looks synthetic
-    linguistic_score, flags = linguistic_risk_score(transcript)    # 0 = benign, 1 = classic scam language
-
-    composite = fuse_signals(speaker_score, artifact_score, linguistic_score)
-
-    return {
-        "status": "done",
-        "timestamp": time.time(),
-        "transcript": transcript,
-        "stated_name": stated_name,
-        "speaker_match_score": speaker_score,
-        "artifact_risk_score": artifact_score,
-        "linguistic_risk_score": linguistic_score,
-        "linguistic_flags": flags,
-        "composite_risk": composite["score"],
-        "verdict": composite["verdict"],
-        "explanation": composite["explanation"],
-    }
+_PUBLIC_FIELDS = (
+    "call_sid", "status", "from_number", "caller_name", "caller_display", "greeting_text", "transcript",
+    "stated_name", "verdict", "decided_by", "explanation", "red_flags", "layers", "timestamp",
+)
 
 
-def extract_stated_name(transcript: str) -> str:
-    """
-    Extremely naive placeholder: looks for 'this is <name>' or 'my name is <name>'.
-    Swap this for a small LLM call (feed the transcript, ask it to extract the
-    stated name) once the rest of the pipeline is working end to end —
-    that'll be far more robust than string matching.
-    """
-    lowered = transcript.lower()
-    for marker in ["my name is ", "this is "]:
-        if marker in lowered:
-            after = lowered.split(marker, 1)[1]
-            return after.split(".")[0].split(",")[0].strip().split(" ")[0].capitalize()
-    return "unknown"
+def _public(call: dict) -> dict:
+    return {k: call[k] for k in _PUBLIC_FIELDS if k in call}
 
 
 @app.get("/results/latest")
 async def get_latest_result():
-    return JSONResponse(latest_result)
+    with _lock:
+        call = dict(_calls[_latest_sid]) if _latest_sid else None
+    if call is None:
+        return JSONResponse({"status": "waiting", "message": "No calls yet."})
+    return JSONResponse(_public(call))
+
+
+class Decision(BaseModel):
+    answer: bool
+    call_sid: str | None = None  # defaults to the latest call
+
+
+@app.post("/call/decision")
+async def call_decision(body: Decision):
+    """The app's Yes/No bubble. Yes -> ACSA answers; No -> ring through / decline."""
+    sid = body.call_sid or _latest_sid
+    call = _get(sid) if sid else None
+    if call is None:
+        raise HTTPException(404, "no such call")
+    if call["status"] != "ringing":
+        raise HTTPException(409, f"call is already {call['status']}")
+    _update(sid, decision="yes" if body.answer else "no")
+    return {"call_sid": sid, "decision": "yes" if body.answer else "no"}
 
 
 @app.post("/enroll")
-async def enroll(name: str = Form(...), audio: UploadFile = None):
+async def enroll(name: str = Form(...), audio: UploadFile = None, phone: str = Form(None)):
     """
-    Upload a short (10-30s) clean reference clip of a real person's voice.
-    curl -F "name=Sarah" -F "audio=@sarah_sample.wav" http://localhost:8000/enroll
+    Upload a short (10-30s) clean reference clip of a real person's voice. Optional `phone`
+    lets the ring screen show their name instead of a raw number.
+    curl -F "name=Sarah" -F "phone=+15405550100" -F "audio=@sarah_sample.wav" http://localhost:8000/enroll
     """
+    if audio is None:
+        raise HTTPException(422, "audio file is required")
     save_path = os.path.join(DATA_DIR, f"enroll_{name.lower()}.wav")
     with open(save_path, "wb") as f:
         f.write(await audio.read())
     enroll_voice(name, save_path)
+    if phone:
+        try:
+            register_contact_number(name, phone)
+        except ValueError as exc:
+            raise HTTPException(422, str(exc))
     return {"status": "enrolled", "name": name}
+
+
+@app.post("/demo/analyze")
+async def demo_analyze(audio: UploadFile, background: BackgroundTasks, from_number: str = Form(None)):
+    """
+    Fallback path if live telephony fails during judging: run the exact same waterfall on a
+    saved recording. Shows up in the app/dashboard as a call that goes straight to processing.
+    curl -F "audio=@saved_call.wav" -F "from_number=+15405550100" http://localhost:8000/demo/analyze
+    """
+    sid = f"demo-{int(time.time() * 1000)}"
+    path = os.path.join(DATA_DIR, f"{sid}.wav")
+    with open(path, "wb") as f:
+        f.write(await audio.read())
+    _new_call(sid, from_number, status="processing")
+    background.add_task(lambda: _apply_result(sid, run_waterfall(path, from_number)))
+    return {"call_sid": sid, "status": "processing"}
 
 
 @app.get("/")
 async def dashboard():
-    return FileResponse(os.path.join(os.path.dirname(__file__), "static", "dashboard.html"))
+    return FileResponse(os.path.join(STATIC_DIR, "dashboard.html"))
