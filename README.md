@@ -38,7 +38,7 @@ Web fallback dashboard: `http://localhost:8000`. Tests: `python -m pytest tests`
 | Route | Who calls it | What it does |
 |---|---|---|
 | `POST /voice/incoming` | Twilio | new call -> status `ringing`, caller held on a `<Pause>`/`<Redirect>` loop |
-| `POST /call/decision` `{"answer": true}` | iOS app | Yes -> ACSA answers (ElevenLabs greeting, `<Record>`); No -> forward/decline. No answer within `ACSA_ANSWER_TIMEOUT_SECONDS` = auto-answer |
+| `POST /call/decision` `{"answer": true}` | iOS app | Yes -> ACSA answers (plays `static/acsa_greeting.mp3`, then `<Record>`); No -> forward/decline. No answer within `ACSA_ANSWER_TIMEOUT_SECONDS` = auto-answer |
 | `POST /voice/recording` | Twilio | download recording, run the waterfall in the background (status `processing`) |
 | `GET /results/latest` | app / dashboard | latest call: `status`, `caller_display`, `greeting_text`, `transcript`, `verdict`, `explanation`, `decided_by`, `layers` |
 | `POST /enroll` (`name`, `audio`, optional `phone`) | you | register a reference voice |

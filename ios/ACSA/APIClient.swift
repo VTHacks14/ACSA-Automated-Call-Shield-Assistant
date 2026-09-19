@@ -15,7 +15,7 @@ struct APIClient {
 
     /// Set once in the in-app settings sheet (persisted). ngrok's free tier changes this every restart.
     static var baseURL: String {
-        get { UserDefaults.standard.string(forKey: defaultsKey) ?? ProcessInfo.processInfo.environment["ACSA_BASE_URL"] ?? "http://localhost:8000" }
+        get { UserDefaults.standard.string(forKey: defaultsKey) ?? ProcessInfo.processInfo.environment["ACSA_BASE_URL"] ?? "https://refutable-aversion-unmasking.ngrok-free.dev" }
         set { UserDefaults.standard.set(newValue.trimmingCharacters(in: .whitespacesAndNewlines), forKey: defaultsKey) }
     }
 

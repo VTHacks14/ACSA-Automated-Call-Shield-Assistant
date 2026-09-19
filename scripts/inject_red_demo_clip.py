@@ -3,7 +3,7 @@ Trigger the RED (AI_SCAM) demo case on demand: Number 2 places one outbound call
 into Number 1 (ACSA's line) and plays a pre-recorded AI-generated clip via <Play>.
 
     python scripts/inject_red_demo_clip.py            # uses static/demo/red_clip.mp3
-    python scripts/inject_red_demo_clip.py --delay 12 # seconds to wait before the clip starts
+    python scripts/inject_red_demo_clip.py --delay 9  # seconds to wait before the clip starts
 
 Setup (one time, offline, ahead of the event):
   1. Generate the clip (Cartesia, per the plan) and save it as static/demo/red_clip.mp3
@@ -14,7 +14,11 @@ Setup (one time, offline, ahead of the event):
 Timing — the one thing to rehearse: when Number 1 is called, ACSA holds the caller until
 someone taps Yes in the app (auto-answers after ACSA_ANSWER_TIMEOUT_SECONDS), then plays its
 greeting and only then starts recording. The clip must start AFTER the greeting ends, or its
-opening is lost. --delay is that wait; the default assumes you tap Yes within a few seconds.
+opening is lost. --delay is that wait; the default assumes you tap Yes within a second or two:
+measured, a near-instant tap puts the recording start ~8 s after the call connects (6.4 s
+greeting + hold-poll lag). Don't overshoot — the recording ends after 4 s of silence
+(<Record timeout=4>), and --delay 12 landed right on that limit and lost the clip. If you tap
+later than ~2 s, add the difference.
 
 Note: Twilio trial accounts can only call verified numbers and prepend a disclaimer, which
 also eats into the delay. Use the upgraded account for the live demo.
@@ -46,7 +50,7 @@ def need(name: str) -> str:
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--clip", default="red_clip.mp3", help="filename inside static/demo/")
-    parser.add_argument("--delay", type=int, default=12, help="seconds to pause before playing the clip")
+    parser.add_argument("--delay", type=int, default=9, help="seconds to pause before playing the clip")
     args = parser.parse_args()
 
     if not os.path.exists(os.path.join(STATIC_DIR, args.clip)):

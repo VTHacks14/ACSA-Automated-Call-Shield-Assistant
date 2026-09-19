@@ -7,7 +7,7 @@ dashboard) only poll /results/latest and POST the Yes/No answer decision.
 Call lifecycle (status field):
   ringing    /voice/incoming — caller is held on a short <Pause>/<Redirect> loop while
              the app shows "Would you like ACSA to answer for you?"
-  answered   user tapped Yes (or the hold timed out) — ElevenLabs greeting plays, then <Record>
+  answered   user tapped Yes (or the hold timed out) — static/acsa_greeting.mp3 plays, then <Record>
   processing /voice/recording — recording downloaded, waterfall running in the background
              (Twilio's webhook timeout is ~15 s; the pipeline is slower, so never run it inline)
   done       verdict ready; caller hears a goodbye and is hung up on
@@ -56,17 +56,16 @@ PROCESSING_TIMEOUT = 60.0  # stop holding the caller if the pipeline hasn't fini
 _calls: dict[str, dict] = {}
 _latest_sid: str | None = None
 _lock = threading.Lock()
-_greeting_file: str | None = None
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    global _greeting_file
     # Warm the slow stuff now so the first real call isn't the one that pays for it.
     from pipeline import local_detector, transcribe
 
     threading.Thread(target=lambda: (transcribe.warm_up(), local_detector.warm_up()), daemon=True).start()
-    _greeting_file = greeting_mod.ensure_greeting_audio()
+    if not greeting_mod.greeting_audio_exists():
+        log.warning("static/%s missing — greeting will use Twilio <Say>", greeting_mod.GREETING_FILENAME)
     yield
 
 
@@ -173,8 +172,8 @@ def _hold_response(sid: str, base: str | None = None) -> Response:
 def _answer_response(sid: str, base: str | None) -> Response:
     _update(sid, status="answered", greeting_text=greeting_mod.GREETING_TEXT)
     vr = VoiceResponse()
-    if _greeting_file and base:
-        vr.play(f"{base}/static/{_greeting_file}")
+    if base and greeting_mod.greeting_audio_exists():
+        vr.play(f"{base}/static/{greeting_mod.GREETING_FILENAME}")
     else:
         vr.say(greeting_mod.GREETING_TEXT)
     vr.record(max_length=20, timeout=4, action="/voice/recording", play_beep=True, trim="trim-silence")
