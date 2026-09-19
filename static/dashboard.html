@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>VoicePrint Consent — Live Screening</title>
+  <style>
+    body { font-family: -apple-system, sans-serif; background: #0f1115; color: #eee; padding: 40px; }
+    h1 { font-weight: 600; }
+    .meter-row { margin: 20px 0; }
+    .meter-label { font-size: 14px; color: #aaa; margin-bottom: 6px; }
+    .meter-bar { background: #222; border-radius: 8px; height: 24px; overflow: hidden; }
+    .meter-fill { height: 100%; transition: width 0.4s ease, background 0.4s ease; }
+    .verdict { font-size: 32px; font-weight: 700; margin: 30px 0 10px; }
+    .explanation { color: #bbb; }
+    .transcript { margin-top: 20px; padding: 16px; background: #1a1c22; border-radius: 8px; font-style: italic; }
+  </style>
+</head>
+<body>
+  <h1>VoicePrint Consent</h1>
+  <div id="status">Waiting for a call...</div>
+
+  <div class="meter-row">
+    <div class="meter-label">Speaker Match</div>
+    <div class="meter-bar"><div id="bar-speaker" class="meter-fill" style="width:0%"></div></div>
+  </div>
+  <div class="meter-row">
+    <div class="meter-label">Audio Authenticity Risk</div>
+    <div class="meter-bar"><div id="bar-artifact" class="meter-fill" style="width:0%"></div></div>
+  </div>
+  <div class="meter-row">
+    <div class="meter-label">Linguistic Risk</div>
+    <div class="meter-bar"><div id="bar-linguistic" class="meter-fill" style="width:0%"></div></div>
+  </div>
+  <div class="meter-row">
+    <div class="meter-label">Composite Risk</div>
+    <div class="meter-bar"><div id="bar-composite" class="meter-fill" style="width:0%"></div></div>
+  </div>
+
+  <div id="verdict" class="verdict"></div>
+  <div id="explanation" class="explanation"></div>
+  <div id="transcript" class="transcript"></div>
+
+  <script>
+    function colorFor(pct) {
+      if (pct > 65) return "#e5484d";
+      if (pct > 35) return "#f5a623";
+      return "#3fb950";
+    }
+    function setBar(id, value) {
+      const pct = Math.round((value ?? 0) * 100);
+      const el = document.getElementById(id);
+      el.style.width = pct + "%";
+      el.style.background = colorFor(pct);
+    }
+
+    async function poll() {
+      const res = await fetch("/results/latest");
+      const data = await res.json();
+
+      if (data.status === "waiting") {
+        document.getElementById("status").innerText = "Waiting for a call...";
+      } else if (data.status === "processing") {
+        document.getElementById("status").innerText = "Analyzing call...";
+      } else if (data.status === "done") {
+        document.getElementById("status").innerText = "";
+        setBar("bar-speaker", data.speaker_match_score ?? 0);
+        setBar("bar-artifact", data.artifact_risk_score);
+        setBar("bar-linguistic", data.linguistic_risk_score);
+        setBar("bar-composite", data.composite_risk);
+        document.getElementById("verdict").innerText = data.verdict;
+        document.getElementById("verdict").style.color = colorFor(data.composite_risk * 100);
+        document.getElementById("explanation").innerText = data.explanation;
+        document.getElementById("transcript").innerText = '"' + data.transcript + '"';
+      }
+    }
+
+    setInterval(poll, 1500);
+    poll();
+  </script>
+</body>
+</html>

@@ -1,0 +1,21 @@
+# secrets
+.env
+
+# python
+venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# runtime data (call recordings, voice embeddings, enrolled samples)
+data/
+
+# macOS / Xcode
+.DS_Store
+ios/*.xcodeproj/xcuserdata/
+ios/build/
+DerivedData/
+
+# generated audio served to Twilio (keep the demo clip out of git; regenerate offline)
+static/demo/
+static/greeting.mp3
