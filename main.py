@@ -112,6 +112,8 @@ def _apply_result(sid: str, result: dict) -> None:
     """Fold a finished waterfall result into the call, upgrading the display name if one was stated."""
     call = _get(sid) or {}
     display = call.get("caller_name") or result.get("stated_name") or call.get("from_number") or "Unknown caller"
+    if display.islower():  # enrolled names are stored lowercased; numbers have no case so they pass through
+        display = display.title()
     _update(
         sid, status="done", caller_display=display, transcript=result["transcript"],
         stated_name=result["stated_name"], verdict=result["verdict"], decided_by=result["decided_by"],

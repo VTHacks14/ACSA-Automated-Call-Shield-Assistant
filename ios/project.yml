@@ -1,0 +1,28 @@
+name: ACSA
+options:
+  bundleIdPrefix: com.acsa
+  deploymentTarget:
+    iOS: "17.0"
+  createIntermediateGroups: true
+settings:
+  base:
+    SWIFT_VERSION: "5.0"
+    # Free Apple ID (Personal Team): open ACSA.xcodeproj -> Signing & Capabilities -> pick your team.
+    # If "com.acsa.callshield" is taken, change the bundle id there. No push/CallKit entitlements are used.
+    CODE_SIGN_STYLE: Automatic
+    PRODUCT_BUNDLE_IDENTIFIER: com.acsa.callshield
+targets:
+  ACSA:
+    type: application
+    platform: iOS
+    sources: [ACSA]
+    info:
+      path: ACSA/Info.plist
+      properties:
+        CFBundleDisplayName: ACSA
+        UILaunchScreen: {}
+        UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait]
+        # ngrok URLs are https; this only exempts plain-http LAN/localhost backends during dev.
+        NSAppTransportSecurity:
+          NSAllowsLocalNetworking: true
+        NSLocalNetworkUsageDescription: ACSA connects to your ACSA backend on the local network.
