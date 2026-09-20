@@ -1,22 +1,21 @@
 # ACSA — Automated Call Shield Assistant (backend)
 
 FastAPI + Twilio backend for VTHacks 14. A caller is greeted by ACSA, states their name and
-reason for calling, and the recording runs a waterfall. Only Layers 1-4 can produce **AI_SCAM**;
-only Gemini produces **LIKELY_HUMAN** / **HUMAN_LIKELY_SCAM**. See `ACSA(V1).md` for the design.
+reason for calling, and the recording runs a four-layer waterfall. Only Layers 1-3 can produce
+**AI_SCAM**; only Layer 4 (Gemini) produces **LIKELY_HUMAN** / **HUMAN_LIKELY_SCAM**. See `ACSA(V1).md` for the design.
 
 ```
 Layer 1  scam number gate (Atlas / FTC DNC)   match            -> AI_SCAM
-Whisper  transcript (feeds Layer 2 + Gemini + the UI)
+(STT)    ElevenLabs speech-to-text transcript  not a layer; feeds Layer 2 + Layer 4 + the UI
 Layer 2  voiceprint (Resemblyzer)             confident mismatch -> AI_SCAM   (a match does not exit)
-Layer 3  Sightengine AI-voice detector        confident AI     -> AI_SCAM
-Layer 4  local detector (OFF by default)      confident AI     -> AI_SCAM
-Gemini   content judgment                     -> LIKELY_HUMAN | HUMAN_LIKELY_SCAM
+Layer 3  local detector (OFF by default)      confident AI     -> AI_SCAM
+Layer 4  Gemini content judgment              -> LIKELY_HUMAN | HUMAN_LIKELY_SCAM
 ```
 
 ## Setup
 
 ```bash
-brew install ffmpeg libsndfile          # system deps for Whisper / librosa
+brew install ffmpeg libsndfile          # system deps for librosa
 python -m venv venv && source venv/bin/activate
 pip install -r requirements.txt         # keeps setuptools<82 on purpose (pkg_resources)
 cp .env.example .env                    # then fill in real values; .env is gitignored
@@ -38,7 +37,7 @@ Web fallback dashboard: `http://localhost:8000`. Tests: `python -m pytest tests`
 | Route | Who calls it | What it does |
 |---|---|---|
 | `POST /voice/incoming` | Twilio | new call -> status `ringing`, caller held on a `<Pause>`/`<Redirect>` loop |
-| `POST /call/decision` `{"answer": true}` | iOS app | Yes -> ACSA answers (plays `static/acsa_greeting.mp3`, then `<Record>`); No -> forward/decline. No answer within `ACSA_ANSWER_TIMEOUT_SECONDS` = auto-answer |
+| `POST /call/decision` `{"answer": true}` | iOS app | Yes -> ACSA answers (plays `static/acsa_greeting.mp3`, then `<Record>`); No, or no tap within `ACSA_ANSWER_TIMEOUT_SECONDS` (default 20 s) -> caller hears "The person you are dialing is busy or unavailable." and is hung up on (no recording, no analysis) |
 | `POST /voice/recording` | Twilio | download recording, run the waterfall in the background (status `processing`) |
 | `GET /results/latest` | app / dashboard | latest call: `status`, `caller_display`, `greeting_text`, `transcript`, `verdict`, `explanation`, `decided_by`, `layers` |
 | `POST /enroll` (`name`, `audio`, optional `phone`) | you | register a reference voice |
@@ -57,5 +56,5 @@ Statuses: `waiting` `ringing` `answered` `processing` `done` `declined` `error`.
 - The scam-number gate uses consumer-*reported* numbers, not confirmed fraud.
 - A voiceprint *match* is weak evidence (a clone can pass); only a *mismatch* is strong.
 - Enroll voices from a sample recorded through the phone line; thresholds are calibrated on 8 kHz audio (see `speaker_verification.py`).
-- Layer 4 is off by default: the open-source model false-flagged a live human on phone audio. ElevenLabs has no detection API.
+- Layer 3 is off by default: the open-source model false-flagged a live human on phone audio. ElevenLabs has no detection API.
 - The iOS app polls (no push) — it must be open and in the foreground.

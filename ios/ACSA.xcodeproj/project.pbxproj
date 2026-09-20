@@ -7,28 +7,38 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		07C3B599633ACE2585097426 /* PipelineAnimationView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C9A1FA938F754D60DA1C6977 /* PipelineAnimationView.swift */; };
+		148B28C29D1E8959146BA408 /* CallFlowView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 45A3D98CB56E8424B582F6D6 /* CallFlowView.swift */; };
 		1F8853EE068389BA9319203C /* ScreeningView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3600597AD9DBDF5C5BA351D1 /* ScreeningView.swift */; };
+		212DBC2AEBC2B15CA0CAC1A8 /* Theme.swift in Sources */ = {isa = PBXBuildFile; fileRef = ADA6BC29A0B8CE789C4BAA1A /* Theme.swift */; };
+		2DDE49B2B63390CE857A1027 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = D6D7466D712B34AB0B3F0CDA /* Assets.xcassets */; };
 		31B51657ACB9624611085066 /* GaugeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = EA842C1DB4D784DCB79E7382 /* GaugeView.swift */; };
 		4966B2689F506E62451EFE69 /* Models.swift in Sources */ = {isa = PBXBuildFile; fileRef = 745EF563EC1C19AEE5EE1F90 /* Models.swift */; };
+		54E7C2A04CBD9689D3EECAA3 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E7DFD220586F6F359E1FF8EE /* SettingsView.swift */; };
 		565E23426A8F5446D6C562AA /* IncomingCallView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 880F5F8186B013C8FE848469 /* IncomingCallView.swift */; };
+		8CFD61804E7808A875CCB003 /* SplashView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 98C46173643F45608DE3DE53 /* SplashView.swift */; };
 		93D8172C62F9E16B37A6B7E5 /* APIClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 41FAD8BE9EB8CF8B7002914D /* APIClient.swift */; };
-		BE0786ADA8F5756D7E849894 /* IdleView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2E690BA7AEE35007140595F7 /* IdleView.swift */; };
+		CB9152B489D94E6F93392FD5 /* ConfettiView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C55C21AC4B4784BCDFBEBEE5 /* ConfettiView.swift */; };
 		D0F7ED8E47F84AD7E9B7090A /* CallMonitor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 42A1980E7C3ADB23EC44DAEE /* CallMonitor.swift */; };
 		DD0E0E724C9C854B369EC17C /* ACSAApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1ECB71A8DB5964EC832C7D9 /* ACSAApp.swift */; };
-		ED78B46A53A909AA959A36F4 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 47AD53B1AEFEB88F00D11211 /* ContentView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
 		041230AC5A9F404D96C61F03 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
-		0FC636D899DACD9E2E66AC5A /* ACSA.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = ACSA.app; sourceTree = BUILT_PRODUCTS_DIR; };
-		2E690BA7AEE35007140595F7 /* IdleView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IdleView.swift; sourceTree = "<group>"; };
+		0FC636D899DACD9E2E66AC5A /* ACSA.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = ACSA.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		3600597AD9DBDF5C5BA351D1 /* ScreeningView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScreeningView.swift; sourceTree = "<group>"; };
 		41FAD8BE9EB8CF8B7002914D /* APIClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = APIClient.swift; sourceTree = "<group>"; };
 		42A1980E7C3ADB23EC44DAEE /* CallMonitor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CallMonitor.swift; sourceTree = "<group>"; };
-		47AD53B1AEFEB88F00D11211 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
+		45A3D98CB56E8424B582F6D6 /* CallFlowView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CallFlowView.swift; sourceTree = "<group>"; };
 		745EF563EC1C19AEE5EE1F90 /* Models.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Models.swift; sourceTree = "<group>"; };
 		880F5F8186B013C8FE848469 /* IncomingCallView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IncomingCallView.swift; sourceTree = "<group>"; };
+		98C46173643F45608DE3DE53 /* SplashView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SplashView.swift; sourceTree = "<group>"; };
+		ADA6BC29A0B8CE789C4BAA1A /* Theme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Theme.swift; sourceTree = "<group>"; };
 		B1ECB71A8DB5964EC832C7D9 /* ACSAApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ACSAApp.swift; sourceTree = "<group>"; };
+		C55C21AC4B4784BCDFBEBEE5 /* ConfettiView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConfettiView.swift; sourceTree = "<group>"; };
+		C9A1FA938F754D60DA1C6977 /* PipelineAnimationView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PipelineAnimationView.swift; sourceTree = "<group>"; };
+		D6D7466D712B34AB0B3F0CDA /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		E7DFD220586F6F359E1FF8EE /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 		EA842C1DB4D784DCB79E7382 /* GaugeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GaugeView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
@@ -46,14 +56,19 @@
 			children = (
 				B1ECB71A8DB5964EC832C7D9 /* ACSAApp.swift */,
 				41FAD8BE9EB8CF8B7002914D /* APIClient.swift */,
+				D6D7466D712B34AB0B3F0CDA /* Assets.xcassets */,
+				45A3D98CB56E8424B582F6D6 /* CallFlowView.swift */,
 				42A1980E7C3ADB23EC44DAEE /* CallMonitor.swift */,
-				47AD53B1AEFEB88F00D11211 /* ContentView.swift */,
+				C55C21AC4B4784BCDFBEBEE5 /* ConfettiView.swift */,
 				EA842C1DB4D784DCB79E7382 /* GaugeView.swift */,
-				2E690BA7AEE35007140595F7 /* IdleView.swift */,
 				880F5F8186B013C8FE848469 /* IncomingCallView.swift */,
 				041230AC5A9F404D96C61F03 /* Info.plist */,
 				745EF563EC1C19AEE5EE1F90 /* Models.swift */,
+				C9A1FA938F754D60DA1C6977 /* PipelineAnimationView.swift */,
 				3600597AD9DBDF5C5BA351D1 /* ScreeningView.swift */,
+				E7DFD220586F6F359E1FF8EE /* SettingsView.swift */,
+				98C46173643F45608DE3DE53 /* SplashView.swift */,
+				ADA6BC29A0B8CE789C4BAA1A /* Theme.swift */,
 			);
 			path = ACSA;
 			sourceTree = "<group>";
@@ -74,6 +89,7 @@
 			buildConfigurationList = AE90098D4C5D65A220DD9F10 /* Build configuration list for PBXNativeTarget "ACSA" */;
 			buildPhases = (
 				0543911767DE24C20D719143 /* Sources */,
+				94A59E73F14873B1F29E83EF /* Resources */,
 			);
 			buildRules = (
 			);
@@ -96,6 +112,7 @@
 				LastUpgradeCheck = 1430;
 				TargetAttributes = {
 					C55D5EC6E804B1B18EBBD1C6 = {
+						DevelopmentTeam = YTNN8CM8ZD;
 						ProvisioningStyle = Automatic;
 					};
 				};
@@ -119,6 +136,17 @@
 		};
 /* End PBXProject section */
 
+/* Begin PBXResourcesBuildPhase section */
+		94A59E73F14873B1F29E83EF /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				2DDE49B2B63390CE857A1027 /* Assets.xcassets in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
 /* Begin PBXSourcesBuildPhase section */
 		0543911767DE24C20D719143 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
@@ -126,13 +154,17 @@
 			files = (
 				DD0E0E724C9C854B369EC17C /* ACSAApp.swift in Sources */,
 				93D8172C62F9E16B37A6B7E5 /* APIClient.swift in Sources */,
+				148B28C29D1E8959146BA408 /* CallFlowView.swift in Sources */,
 				D0F7ED8E47F84AD7E9B7090A /* CallMonitor.swift in Sources */,
-				ED78B46A53A909AA959A36F4 /* ContentView.swift in Sources */,
+				CB9152B489D94E6F93392FD5 /* ConfettiView.swift in Sources */,
 				31B51657ACB9624611085066 /* GaugeView.swift in Sources */,
-				BE0786ADA8F5756D7E849894 /* IdleView.swift in Sources */,
 				565E23426A8F5446D6C562AA /* IncomingCallView.swift in Sources */,
 				4966B2689F506E62451EFE69 /* Models.swift in Sources */,
+				07C3B599633ACE2585097426 /* PipelineAnimationView.swift in Sources */,
 				1F8853EE068389BA9319203C /* ScreeningView.swift in Sources */,
+				54E7C2A04CBD9689D3EECAA3 /* SettingsView.swift in Sources */,
+				8CFD61804E7808A875CCB003 /* SplashView.swift in Sources */,
+				212DBC2AEBC2B15CA0CAC1A8 /* Theme.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -175,6 +207,7 @@
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
 				DEBUG_INFORMATION_FORMAT = dwarf;
+				DEVELOPMENT_TEAM = YTNN8CM8ZD;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_TESTABILITY = YES;
 				GCC_C_LANGUAGE_STANDARD = gnu11;
@@ -240,6 +273,7 @@
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				DEVELOPMENT_TEAM = YTNN8CM8ZD;
 				ENABLE_NS_ASSERTIONS = NO;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				GCC_C_LANGUAGE_STANDARD = gnu11;
@@ -267,7 +301,6 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
-				DEVELOPMENT_TEAM = YTNN8CM8ZD;
 				INFOPLIST_FILE = ACSA/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
@@ -283,7 +316,6 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
-				DEVELOPMENT_TEAM = YTNN8CM8ZD;
 				INFOPLIST_FILE = ACSA/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",

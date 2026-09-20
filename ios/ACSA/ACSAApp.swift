@@ -7,9 +7,8 @@ struct ACSAApp: App {
 
     var body: some Scene {
         WindowGroup {
-            ContentView()
+            SplashView()
                 .environmentObject(monitor)
-                .preferredColorScheme(.dark)
                 // Polling only runs while foregrounded — no push, so a locked/backgrounded app
                 // won't see calls. That's the known, accepted tradeoff (free Apple ID).
                 .onChange(of: scenePhase) { _, phase in

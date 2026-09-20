@@ -10,6 +10,7 @@ settings:
     # Free Apple ID (Personal Team): open ACSA.xcodeproj -> Signing & Capabilities -> pick your team.
     # If "com.acsa.callshield" is taken, change the bundle id there. No push/CallKit entitlements are used.
     CODE_SIGN_STYLE: Automatic
+    DEVELOPMENT_TEAM: YTNN8CM8ZD  # kept here so regenerating with xcodegen doesn't drop the signing team
     PRODUCT_BUNDLE_IDENTIFIER: com.acsa.callshield
 targets:
   ACSA:
@@ -20,7 +21,11 @@ targets:
       path: ACSA/Info.plist
       properties:
         CFBundleDisplayName: ACSA
-        UILaunchScreen: {}
+        # Plain white, same as SplashView's background, so nothing flashes (an empty dict here gave iOS's default
+        # dark/black background). No image: a launch image can only be centered, and the splash logo now sits near
+        # the top, so showing it here would make it visibly jump.
+        UILaunchScreen:
+          UIColorName: LaunchBackground
         UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait]
         # ngrok URLs are https; this only exempts plain-http LAN/localhost backends during dev.
         NSAppTransportSecurity:

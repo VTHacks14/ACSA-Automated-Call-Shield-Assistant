@@ -3,11 +3,12 @@ Run the full waterfall directly on a saved recording — no Twilio, no server.
 
 Two uses:
   * the fallback demo path if live telephony breaks during judging
-  * a smoke test: shows exactly what every layer returned (check Layer 3/4 scores here)
+  * a smoke test: shows exactly what every layer returned (check the Layer 3 score here)
 
     python scripts/run_pipeline_on_file.py data/call_CA....wav [--from +15405550100]
 
-Layer 3 spends Sightengine operations (free tier: 500/day) — don't loop this.
+Each run sends the audio to ElevenLabs for transcription (credits) and, if no layer exits first, the
+transcript to Gemini — don't loop this.
 """
 
 import argparse

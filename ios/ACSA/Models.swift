@@ -6,11 +6,13 @@ enum Verdict: String {
     case humanLikelyScam = "HUMAN_LIKELY_SCAM" // yellow, middle
     case aiScam = "AI_SCAM"                    // red, right
 
+    /// The verdict label's color: its gauge zone's hue. Green and yellow are the gauge's exact colors; the red is
+    /// lifted a little from the gauge's #C6211D, which is only ~2.8:1 on the navy card (this is ~4.3:1).
     var color: Color {
         switch self {
-        case .likelyHuman: return .green
-        case .humanLikelyScam: return .yellow
-        case .aiScam: return .red
+        case .likelyHuman: return GaugeView.green
+        case .humanLikelyScam: return GaugeView.yellow
+        case .aiScam: return Color(red: 0xF0 / 255, green: 0x42 / 255, blue: 0x3C / 255) // #F0423C
         }
     }
 
@@ -25,9 +27,9 @@ enum Verdict: String {
 
     var title: String {
         switch self {
-        case .likelyHuman: return "Likely human"
-        case .humanLikelyScam: return "Human, likely scam"
-        case .aiScam: return "AI scam"
+        case .likelyHuman: return "Likely Human"
+        case .humanLikelyScam: return "Human, But Probably A Scam"
+        case .aiScam: return "AI Scam"
         }
     }
 }
@@ -46,5 +48,20 @@ struct CallState: Decodable, Equatable {
     var explanation: String?
 
     var verdictKind: Verdict? { verdict.flatMap(Verdict.init(rawValue:)) }
+
+    /// One short line on why this verdict was reached, keyed on the layer that actually decided it
+    /// (`decided_by` from the waterfall), so it stays accurate whatever the on-screen animation showed.
+    var verdictReason: String {
+        switch decidedBy {
+        case "scam_number_gate": return "Number matched known scam reports"
+        case "speaker_verification": return "Voice didn't match enrolled sample"
+        case "local_detector": return "Voice detected as AI-generated"
+        case "gemini":
+            return verdictKind == .humanLikelyScam
+                ? "Content matched known scam patterns"
+                : "No scam patterns found in what was said"
+        default: return explanation ?? ""
+        }
+    }
     var isTerminal: Bool { ["done", "declined", "error"].contains(status) }
 }

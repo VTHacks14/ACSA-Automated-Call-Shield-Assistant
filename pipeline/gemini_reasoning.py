@@ -1,11 +1,11 @@
 """
 Gemini: the ONLY source of LIKELY_HUMAN (green) and HUMAN_LIKELY_SCAM (yellow).
 
-Reached whenever Layers 1-4 didn't already exit to AI_SCAM — either because the
+Layer 4. Reached whenever Layers 1-3 didn't already exit to AI_SCAM — either because the
 audio layers were confidently human (a human can still read a scam script) or
 because they stayed inconclusive throughout. One function, two trigger points.
 
-Gets the Whisper transcript plus whatever raw values Layers 2-4 produced (even
+Gets the transcript plus whatever raw values Layers 2-3 produced (even
 non-confident ones) and returns a verdict + plain-English explanation. This
 replaces the retired fusion.py weighted math and linguistic_risk.py keyword
 scoring — scam-script language (urgency, isolation, unusual payment) is judged
@@ -67,10 +67,9 @@ def _describe_layers(layers: dict) -> str:
         else:
             lines.append(f"- Voiceprint vs enrolled contact '{spk.get('name')}': {spk.get('status')} "
                          f"(cosine similarity {spk.get('similarity')}).")
-    for key, label in (("sightengine", "Sightengine AI-voice detector"), ("local_detector", "Local AI-voice detector")):
-        layer = layers.get(key)
-        if layer and layer.get("score") is not None:
-            lines.append(f"- {label}: AI-likelihood {layer['score']} (0=human, 1=AI) -> {layer['verdict']}.")
+    layer = layers.get("local_detector")
+    if layer and layer.get("score") is not None:
+        lines.append(f"- Local AI-voice detector: AI-likelihood {layer['score']} (0=human, 1=AI) -> {layer['verdict']}.")
     return "\n".join(lines) or "- No audio-layer values were available."
 
 

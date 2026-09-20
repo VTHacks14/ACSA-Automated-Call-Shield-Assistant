@@ -8,13 +8,13 @@ numpy
 scipy
 librosa
 resemblyzer
-openai-whisper
 setuptools<82
 # Layer 1 — scam number gate
 pymongo[srv]
-# Layer 4 — local AI-voice detector (torch is pulled in by openai-whisper)
+# Layer 3 — local AI-voice detector (torch was previously pulled in by openai-whisper; resemblyzer also needs it)
+torch
 transformers
-# Gemini verdict
+# Layer 4 — Gemini verdict
 google-genai
 # tests
 pytest

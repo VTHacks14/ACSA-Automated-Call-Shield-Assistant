@@ -7,11 +7,12 @@ dashboard) only poll /results/latest and POST the Yes/No answer decision.
 Call lifecycle (status field):
   ringing    /voice/incoming — caller is held on a short <Pause>/<Redirect> loop while
              the app shows "Would you like ACSA to answer for you?"
-  answered   user tapped Yes (or the hold timed out) — static/acsa_greeting.mp3 plays, then <Record>
+  answered   user tapped Yes — static/acsa_greeting.mp3 plays, then <Record>
   processing /voice/recording — recording downloaded, waterfall running in the background
              (Twilio's webhook timeout is ~15 s; the pipeline is slower, so never run it inline)
   done       verdict ready; caller hears a goodbye and is hung up on
-  declined   user tapped No — call is forwarded or politely declined
+  declined   user tapped No, or didn't tap within ACSA_ANSWER_TIMEOUT_SECONDS — the caller hears
+             "busy or unavailable" and is hung up on (never auto-answered)
   error      recording/pipeline failed
 
 Run:
@@ -156,9 +157,9 @@ def _hold_response(sid: str, base: str | None = None) -> Response:
         return _hangup("Sorry, something went wrong.")
     decision = call["decision"]
     if decision == "pending" and time.time() - call["ringing_at"] > ANSWER_TIMEOUT:
-        # Nobody tapped in time. Auto-answering keeps a judge from sitting on dead air.
-        _update(sid, decision="yes")
-        decision = "yes"
+        # No tap in time counts the same as No: the person is treated as busy/unavailable. Never auto-answer.
+        _update(sid, decision="no")
+        decision = "no"
     if decision == "no":
         return _decline_response(sid)
     if decision == "yes":
@@ -180,16 +181,13 @@ def _answer_response(sid: str, base: str | None) -> Response:
     return _xml(vr)
 
 
+BUSY_MESSAGE = "The person you are dialing is busy or unavailable."
+
+
 def _decline_response(sid: str) -> Response:
+    """Tapped No, or nobody tapped in time: standard telecom message, then hang up. No <Record>, no analysis."""
     _update(sid, status="declined")
-    forward_to = os.getenv("ACSA_FORWARD_TO_NUMBER")
-    vr = VoiceResponse()
-    if forward_to:
-        vr.dial(forward_to)
-    else:
-        vr.say("The person you're calling isn't available right now. Goodbye.")
-        vr.hangup()
-    return _xml(vr)
+    return _hangup(BUSY_MESSAGE)
 
 
 def _hangup(message: str) -> Response:
@@ -218,7 +216,8 @@ def _process_recording(sid: str, recording_url: str) -> None:
     call = _get(sid) or {}
     try:
         path = _download_recording(recording_url, sid)
-        _apply_result(sid, run_waterfall(path, call.get("from_number")))
+        _apply_result(sid, run_waterfall(path, call.get("from_number"),
+                                         on_transcript=lambda text: _update(sid, transcript=text)))
     except Exception as exc:
         log.exception("pipeline failed for %s", sid)
         _update(sid, status="error", explanation=f"Analysis failed: {type(exc).__name__}")
@@ -330,7 +329,8 @@ async def demo_analyze(audio: UploadFile, background: BackgroundTasks, from_numb
     with open(path, "wb") as f:
         f.write(await audio.read())
     _new_call(sid, from_number, status="processing")
-    background.add_task(lambda: _apply_result(sid, run_waterfall(path, from_number)))
+    background.add_task(lambda: _apply_result(
+        sid, run_waterfall(path, from_number, on_transcript=lambda text: _update(sid, transcript=text))))
     return {"call_sid": sid, "status": "processing"}
 
 

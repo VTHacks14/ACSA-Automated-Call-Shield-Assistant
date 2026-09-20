@@ -39,6 +39,9 @@ final class CallMonitor: ObservableObject {
             firstPoll = false
             var shown = state
             if state.status == "ringing", let local = localStatus[sid] { shown.status = local }
+            // Declined (tapped No, or nobody tapped in time -> the caller got "busy or unavailable"): the call is
+            // over, so it leaves the screen instead of lingering.
+            if shown.status == "declined" { dismissed.insert(sid) }
             current = dismissed.contains(sid) ? nil : shown
         } catch {
             connectionError = error.localizedDescription
@@ -56,5 +59,6 @@ final class CallMonitor: ObservableObject {
         localStatus[sid] = status
         current?.status = status
         Task { try? await APIClient.decide(answer: yes, callSid: sid) }
+        if !yes { dismiss() } // No: the backend plays "busy or unavailable" and hangs up; nothing more to show
     }
 }

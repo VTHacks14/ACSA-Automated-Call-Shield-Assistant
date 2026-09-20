@@ -1,93 +1,133 @@
 import SwiftUI
 
-/// After Yes: ACSA's greeting as text, then the caller's transcript and the verdict gauge once analysis finishes.
+/// After Yes: ACSA's greeting, then — strictly in this order — the caller's transcript, then the decorative
+/// analysis animation, then (via `onVerdict`) the verdict screen. White background, same as the splash.
+///
+///   1. "Listening…" while the caller is being recorded, "Transcribing…" while the backend works.
+///   2. The transcript appears the moment the backend has it (it publishes it right after transcription).
+///   3. After a short read pause the four-node animation starts. It never starts before or alongside the transcript.
+///   4. The animation always plays through in full (fixed runtime). The verdict is held back until it has, AND the
+///      result is in — so a fast backend never truncates it, and a slow one just waits on the finished animation.
+///
+/// Chat layout: ACSA's messages are teal-accented bubbles on the left, the caller's are on the right.
 struct ScreeningView: View {
     @EnvironmentObject var monitor: CallMonitor
     let call: CallState
+    let onVerdict: () -> Void
 
-    // Staged reveal so the gauge sweep lands after the transcript, not at the same instant.
-    @State private var showTranscript = false
-    @State private var gaugeVerdict: Verdict?
+    @State private var animationStarted = false
+    @State private var animationFinished = false
+
+    private static let readPause: UInt64 = 1_800_000_000      // transcript sits alone this long before the animation
+    private static let holdBeforeVerdict: UInt64 = 500_000_000 // beat between the animation finishing and the reveal
 
     private var isDone: Bool { call.status == "done" }
+    private var hasTranscript: Bool { !(call.transcript ?? "").isEmpty }
 
     var body: some View {
         ZStack {
-            Color(red: 0.05, green: 0.06, blue: 0.08).ignoresSafeArea()
+            Color.white.ignoresSafeArea()
             VStack(spacing: 0) {
                 header
                 ScrollView {
                     VStack(alignment: .leading, spacing: 14) {
                         if let greeting = call.greetingText {
-                            bubble(label: "ACSA", text: greeting, tint: .green.opacity(0.18), leading: true)
+                            bubble(kind: .acsa, label: "ACSA", text: greeting)
                         }
                         if call.status == "error" {
-                            bubble(label: "Problem", text: call.explanation ?? "Something went wrong analyzing this call.",
-                                   tint: .orange.opacity(0.2), leading: true)
-                        } else if !isDone {
-                            ListeningDots(label: call.status == "processing" ? "Analyzing the response…" : "Listening…")
-                        } else if showTranscript, let transcript = call.transcript, !transcript.isEmpty {
-                            bubble(label: call.callerDisplay ?? "Caller", text: "“\(transcript)”",
-                                   tint: .white.opacity(0.09), leading: false)
-                                .transition(.move(edge: .bottom).combined(with: .opacity))
+                            bubble(kind: .problem, label: "Problem",
+                                   text: call.explanation ?? "Something went wrong analyzing this call.")
+                            doneButton
+                        } else {
+                            if hasTranscript {
+                                bubble(kind: .caller, label: call.callerDisplay ?? "Caller", text: "“\(call.transcript ?? "")”")
+                                    .transition(.move(edge: .bottom).combined(with: .opacity))
+                            } else if !animationStarted {
+                                ListeningDots(label: call.status == "processing" ? "Transcribing…" : "Listening…")
+                            }
+                            if animationStarted {
+                                PipelineAnimationView { animationFinished = true }
+                                    .transition(.opacity)
+                            }
                         }
                     }
                     .padding(20)
+                    .animation(.easeOut(duration: 0.4), value: hasTranscript)
+                    .animation(.easeOut(duration: 0.4), value: animationStarted)
                 }
-                if isDone { verdictPanel.transition(.move(edge: .bottom).combined(with: .opacity)) }
             }
         }
-        .onChange(of: call.status, initial: true) { _, status in
-            guard status == "done" else { return }
-            withAnimation(.easeOut(duration: 0.4)) { showTranscript = true }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.7) { gaugeVerdict = call.verdictKind }
+        .preferredColorScheme(.light)
+        // Start the animation only once the transcript has been on screen for a beat. (No transcript at all — e.g.
+        // the number gate ended the call before any audio work — means there's nothing to read first, so go on
+        // as soon as the result is in.)
+        .task(id: hasTranscript || isDone) {
+            guard hasTranscript || isDone, !animationStarted else { return }
+            if hasTranscript { try? await Task.sleep(nanoseconds: Self.readPause) }
+            if !Task.isCancelled { animationStarted = true }
+        }
+        .task(id: animationFinished && isDone) {
+            guard animationFinished && isDone else { return }
+            try? await Task.sleep(nanoseconds: Self.holdBeforeVerdict)
+            if !Task.isCancelled { onVerdict() }
         }
     }
 
+    /// Compact chat-style header (avatar beside name/status) so the bubbles keep their room.
     private var header: some View {
-        VStack(spacing: 4) {
-            Text(call.callerDisplay ?? "Unknown caller").font(.title2.weight(.semibold))
-            Text(statusText).font(.footnote).foregroundStyle(.secondary)
+        HStack(spacing: 14) {
+            CallerAvatar(size: 52)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(call.callerDisplay ?? "Unknown caller")
+                    .font(.title3.weight(.medium)).foregroundStyle(Theme.navy).lineLimit(1).minimumScaleFactor(0.7)
+                Text(statusText).font(.subheadline).foregroundStyle(Theme.muted)
+            }
         }
-        .frame(maxWidth: .infinity).padding(.top, 28).padding(.bottom, 12)
+        .frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 20).padding(.top, 16).padding(.bottom, 8)
     }
 
     private var statusText: String {
         switch call.status {
         case "answered": return "ACSA is on the call"
-        case "processing": return "Screening…"
-        case "done": return "Screening complete"
+        case "processing": return animationStarted ? "Analyzing…" : "Screening…"
+        case "done": return animationFinished ? "Screening complete" : "Analyzing…"
         default: return "Call ended"
         }
     }
 
-    private var verdictPanel: some View {
-        VStack(spacing: 14) {
-            GaugeView(verdict: gaugeVerdict)
-            if let verdict = gaugeVerdict {
-                Text(verdict.title).font(.title2.weight(.bold)).foregroundStyle(verdict.color)
-                    .transition(.opacity)
-                if let text = call.explanation {
-                    Text(text).font(.callout).foregroundStyle(.secondary).multilineTextAlignment(.center)
-                }
-            }
-            Button("Done") { monitor.dismiss() }.buttonStyle(.borderedProminent).tint(.white.opacity(0.18)).padding(.top, 4)
+    private var doneButton: some View {
+        Button { monitor.dismiss() } label: {
+            Text("Done").font(.headline).foregroundStyle(Theme.navy)
+                .padding(.horizontal, 36).padding(.vertical, 12)
+                .background(Theme.teal, in: Capsule())
         }
-        .padding(22)
-        .frame(maxWidth: .infinity)
-        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 28, style: .continuous))
-        .padding(.horizontal, 12).padding(.bottom, 8)
-        .animation(.easeInOut, value: gaugeVerdict)
+        .frame(maxWidth: .infinity).padding(.top, 6)
     }
 
-    private func bubble(label: String, text: String, tint: Color, leading: Bool) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text(label.uppercased()).font(.caption2.weight(.semibold)).foregroundStyle(.secondary)
-            Text(text).font(.body)
+    private enum BubbleKind { case acsa, caller, problem }
+
+    /// Chat bubble: ACSA and problem notices sit left, the caller sits right. The corner nearest the
+    /// sender is tightened for a chat-tail look, and bubbles stop short of the far edge.
+    private func bubble(kind: BubbleKind, label: String, text: String) -> some View {
+        let leading = kind != .caller
+        let problem = Color(red: 0.80, green: 0.35, blue: 0.05) // readable orange on white
+        let labelColor: Color = { switch kind { case .acsa: return Theme.navy; case .caller: return Theme.muted; case .problem: return problem } }()
+        let fill: Color = { switch kind { case .acsa: return Theme.teal.opacity(0.18); case .caller: return Theme.navy.opacity(0.06); case .problem: return problem.opacity(0.12) } }()
+        let border: Color = { switch kind { case .acsa: return Theme.teal; case .caller: return .clear; case .problem: return problem.opacity(0.6) } }()
+        let shape = UnevenRoundedRectangle(
+            topLeadingRadius: leading ? 6 : 20, bottomLeadingRadius: 20,
+            bottomTrailingRadius: 20, topTrailingRadius: leading ? 20 : 6, style: .continuous)
+        return HStack(spacing: 0) {
+            if !leading { Spacer(minLength: 44) }
+            VStack(alignment: .leading, spacing: 4) {
+                Text(label.uppercased()).font(.caption.weight(.semibold)).foregroundStyle(labelColor)
+                Text(text).font(.body).foregroundStyle(Theme.navy)
+            }
+            .padding(14)
+            .background(fill, in: shape)
+            .overlay(shape.stroke(border, lineWidth: 1.2))
+            if leading { Spacer(minLength: 44) }
         }
-        .padding(14)
-        .background(tint, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-        .frame(maxWidth: .infinity, alignment: leading ? .leading : .trailing)
     }
 }
 
@@ -99,10 +139,10 @@ struct ListeningDots: View {
         HStack(spacing: 10) {
             HStack(spacing: 5) {
                 ForEach(0..<3, id: \.self) { i in
-                    Circle().fill(.secondary).frame(width: 7, height: 7).opacity(phase == i ? 1 : 0.3)
+                    Circle().fill(Theme.teal).frame(width: 7, height: 7).opacity(phase == i ? 1 : 0.3)
                 }
             }
-            Text(label).font(.footnote).foregroundStyle(.secondary)
+            Text(label).font(.subheadline).foregroundStyle(Theme.muted)
         }
         .padding(.top, 6)
         .task {

@@ -28,7 +28,10 @@
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>ACSA connects to your ACSA backend on the local network.</string>
 	<key>UILaunchScreen</key>
-	<dict/>
+	<dict>
+		<key>UIColorName</key>
+		<string>LaunchBackground</string>
+	</dict>
 	<key>UISupportedInterfaceOrientations</key>
 	<array>
 		<string>UIInterfaceOrientationPortrait</string>

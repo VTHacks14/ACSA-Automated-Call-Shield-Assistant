@@ -1,9 +1,9 @@
 """
-Layer 4: local open-source AI-voice detector (Hugging Face wav2vec2 classifier).
+Layer 3: local open-source AI-voice detector (Hugging Face wav2vec2 classifier).
 
 Replaces the originally planned ElevenLabs classifier, which has no public API
 (web UI only) and can't detect other vendors' audio anyway. This runs on-box, so
-no key, no quota, and it's independent of Sightengine.
+no key and no quota.
 
 DISABLED BY DEFAULT (LOCAL_DETECTOR_ENABLED=1 to turn on). Measured on this
 project's saved Twilio recordings (8 kHz), this model is miscalibrated: a clearly
@@ -13,7 +13,7 @@ card's ~99.7% accuracy is on its own wideband eval set, not phone audio.
 
 To turn it on safely: generate the Cartesia red clip, play it through Twilio,
 and compare its score against real human calls (scripts/run_pipeline_on_file.py
-prints the Layer 4 score). Only enable if the two separate cleanly, then set
+prints the Layer 3 score). Only enable if the two separate cleanly, then set
 LOCAL_DETECTOR_AI_ABOVE between them — or swap MODEL_ID for a phone-robust model.
 
 Only "ai" can end a call. Everything else proceeds to Gemini.
